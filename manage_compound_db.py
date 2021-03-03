@@ -307,6 +307,9 @@ class DatabaseManager():
         df = df[['cpd_id', 'lib_id']]
         df['lib_name'] = lib_name
 
+        # Reorder to fit table definition
+        df = df[['lib_id', 'lib_name', 'cpd_id']]
+
         # Populate
         num1, num2 = self._populate_db(df, 'libraryentry')
 
@@ -384,6 +387,8 @@ class DatabaseManager():
                                          columns=['mass', 'relative_intensity'],
                                          dtype=np.float64)
                 fragments['spectra_id'] = row['spectra_id']
+                fragments = fragments[['spectra_id', 'mass',
+                                       'relative_intensity']]
 
                 # Round numbers to decrease storage size
                 fragments = np.around(fragments, 4)
@@ -443,6 +448,9 @@ class DatabaseManager():
 
         # Drop empty properties
         df.dropna(axis='rows', inplace=True)
+
+        # Reorder to fit table definition
+        df = df[['cpd_id', 'category', 'value']]
 
         # Populate
         num1, num2 = self._populate_db(df, 'property')
