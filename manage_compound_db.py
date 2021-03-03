@@ -1,5 +1,6 @@
 import mysql.connector
 import pandas as pd
+import numpy as np
 
 
 class DatabaseManager():
@@ -280,55 +281,79 @@ class DatabaseManager():
         return
 
     def populate_ms2_spectra(self, df, frag_split=';', info_split=','):
-        '''MS2 cols must all be labeled MS/MS {Mode} {Voltage}
-        (e.g. 'MS/MS Positive 10'). Spectra muss be in the following
+        '''MS2 cols must all be labeled MSMS {Mode} {Voltage}
+        (e.g. 'MSMS Positive 10'). Spectra muss be in the following
         format: {mass}{info_split}{intensity}{frag_slit}{mass}{info_split}...'''
 
         # Get MS2 cols
-        cols = [x for x in df.columns if 'MS/MS' in x]
+        cols = [x for x in df.columns if 'MSMS' in x]
 
         # Track total number of entries added
-        num1 = 0
-        num2 = 0
+        num1 = 0  # main table (ms2_spectra)
+        num2 = 0  # main table (ms2_spectra)
+        num1d = 0  # detail table (fragment)
+        num2d = 0  # detail table (fragment)
 
         for col in cols:
 
             # Add spectra to head table
             info = col.split(' ')
-            temp = df[['cpd_id', col]]
+            spectra = df[['cpd_id', col]]
 
             # Drop any nans
-            temp = temp.dropna()
+            spectra = spectra.dropna()
 
             # Assign voltage (boolean)
             if 'pos' in info[1].lower():
-                temp['mode'] = 1
+                spectra['mode'] = 1
             else:
-                temp['mode'] = 0
+                spectra['mode'] = 0
 
             # Add voltage
-            temp['voltage'] = int(info[2])
+            spectra['voltage'] = int(info[2])
 
             # Add spectra id
             start_id = self.get_max_id('ms2_spectra') + 1
-            temp['spectra_id'] = range(start_id, start_id + len(temp))
+            spectra['spectra_id'] = range(start_id, start_id + len(spectra))
 
             # Populate master table
-            num1t, num2t = self._populate_db(temp.drop(columns=[col]), 'ms2_spectra')
+            num1t, num2t = self._populate_db(spectra.drop(columns=[col]), 'ms2_spectra')
             num1 += num1t
             num2 += num2t
 
             # Add each spectra to detail table (int and mass info)
-            for i, row in temp.iterrows():
-                details = np.array([y.split(info_split)
-                                    for y in row[col].split(frag_split)], np.float64)
-                details[:, 1] /= np.sum(details[:, 1])  # Make all intensities 0-1
-                details = pd.DataFrame(
-                    details, columns=['mass', 'relative_intensity'], dtype=np.float64)
-                details = np.around(details, 4)
-                details['spectra_id'] = row['spectra_id']
+            for i, row in spectra.iterrows():
 
-        return
+                # Text to matrix (col 0: mass, col 1: intensity)
+                fragments = np.array([y.split(info_split)
+                                      for y in row[col].split(frag_split)],
+                                     np.float64)
+
+                # Make all intensities 0-1
+                fragments[:, 1] /= np.sum(fragments[:, 1])
+
+                # Matrix to dataframe
+                fragments = pd.DataFrame(fragments,
+                                         columns=['mass', 'relative_intensity'],
+                                         dtype=np.float64)
+                fragments['spectra_id'] = row['spectra_id']
+
+                # Round numbers to decrease storage size
+                fragments = np.around(fragments, 4)
+
+                # Populate fragment table
+                num1t, num2t = self._populate_db(fragments, 'fragment')
+                num1d += num1t
+                num2d += num2t
+
+        # Report spectra additions
+        self.print_added_entries('MS2_Spectra', num1, num2)
+
+        # Report fragment additions
+        self.print_added_entries('Fragment', num1d, num2d)
+
+        return num1, num2, num1d, num2d
+
 
     def populate_property(self, df, exceptions=['cpd_id']):
 
