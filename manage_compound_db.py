@@ -245,6 +245,16 @@ class DatabaseManager():
         print(m.format(table, num1, num2))
         return
 
+    def populate_library(self, lib_info):
+
+        # Form table and populate
+        df = pd.DataFrame(lib_info)
+        num1, num2 = self._populate_db(df, 'library')
+
+        # Report
+        self.print_added_entries('Library', num1, num2)
+        return
+
     def populate_compounds(self, df):
 
         # Form table and populate
@@ -377,17 +387,48 @@ class DatabaseManager():
         self.print_added_entries('Property', num1, num2)
         return
 
-    def populate_db(self, df, lib_name):
+    def _prepare_lib_info(self, lib_info):
+
+        # If only a string is passed, assume this is the library name and
+        # convert to dictionary
+        if type(lib_info) == str:
+            lib_info = {'name': lib_info}
+
+        # Non-dict is not accepted after this stage
+        if type(lib_info) != dict:
+            m = 'Provided library information must be a string or dictionary, not {}'
+            raise TypeError(m.format(type(lib_info)))
+
+        # Ensure keys in dictionary are in lowercase to avoid downstream errors
+        lib_info = dict((k.lower(), v) for k, v in lib_info.iteritems())
+
+        # Throw error if a name is not provided (the only NOT NULL col)
+        if 'name' not in lib_info.keys():
+            raise ValueError('No name provided in library info')
+
+        # Only keep entries that can be inserted into database
+        allowable_keys = ['name', 'doi', 'date']
+        lib_info = {k: lib_info[k] for k in allowable_keys if k in lib_info}
+
+        return lib_info
+
+    def populate_db(self, df, lib_info):
         '''
         Generic function to load full library into the database. Assumes
         provided df has the following columns: 'cpd_id', 'inchi_key', 'lib_id'
         '''
 
+        # Prepare library information for downstream use
+        lib_info = self._prepare_lib_info(lib_info)
+
+        # Populate library
+        self.populate_library(lib_info)
+
         # Populate compounds
         self.populate_compounds(df)
 
         # Populate library entries
-        self.populate_libraryentry(df, lib_name)
+        self.populate_libraryentry(df, lib_info['name'])
 
         # Populate masses
         self.populate_mass(df)
