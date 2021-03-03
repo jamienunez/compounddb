@@ -1,6 +1,10 @@
 import mysql.connector
 import pandas as pd
 import numpy as np
+import os
+
+# Check secure_file_priv for available folders to save to
+TMP_SAVE_PATH = 'C:/ProgramData/MySQL/MySQL Server 8.0/Uploads/'
 
 
 class DatabaseManager():
@@ -213,6 +217,51 @@ class DatabaseManager():
                 self.cursor.execute(query % tuple(row))
             except mysql.connector.ProgrammingError:
                 print('Failed query: {}'.format(query % tuple(row)))
+
+        # Commit changes
+        if commit:
+            self.conn.commit()
+
+        # Assess entries added vs skipped
+        max2 = self.get_num_entries(table)
+        entries_added = max2 - max1
+        entries_skipped = len(df) - entries_added
+
+        return entries_added, entries_skipped
+
+    def _populate_db(self, df, table, commit=True, sep='\t',
+                     line_terminator='\n',
+                     filename=os.path.join(TMP_SAVE_PATH, 'tmp.txt')):
+        '''Drops any entries with nan values then loads full table into DB.
+        Also tracks the number actually inserted into DB.
+        Returns the number of entries added, and the number of entries
+        ignored (not including those with NA values)'''
+
+        # Ignore any entries with nan results
+        df = df.dropna()
+
+        # Get number of entries in DB table before adding anything
+        max1 = self.get_num_entries(table)
+
+        # Save df as .txt to allow bulk upload into database
+        df.to_csv(filename, sep=sep, line_terminator=line_terminator,
+                  index=False, header=False)
+
+        # Design query for bulk upload to database
+        query = '''
+                LOAD DATA INFILE %s
+                   IGNORE
+                   INTO TABLE %s
+                   FIELDS TERMINATED BY %s
+                   LINES TERMINATED BY %s;
+                '''
+        query = query % (self.prep_string(filename),
+                         table,
+                         self.prep_string(sep),
+                         self.prep_string(line_terminator))
+
+        # Upload
+        self.cursor.execute(query)
 
         # Commit changes
         if commit:
