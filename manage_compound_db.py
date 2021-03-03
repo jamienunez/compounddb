@@ -285,7 +285,7 @@ class DatabaseManager():
     def populate_library(self, lib_info):
 
         # Form table and populate
-        df = pd.DataFrame(lib_info)
+        df = pd.DataFrame(lib_info, index=[0])
         num1, num2 = self._populate_db(df, 'library')
 
         # Report
@@ -464,7 +464,7 @@ class DatabaseManager():
             raise TypeError(m.format(type(lib_info)))
 
         # Ensure keys in dictionary are in lowercase to avoid downstream errors
-        lib_info = dict((k.lower(), v) for k, v in lib_info.iteritems())
+        lib_info = dict((k.lower(), v) for k, v in lib_info.items())
 
         # Throw error if a name is not provided (the only NOT NULL col)
         if 'name' not in lib_info.keys():
