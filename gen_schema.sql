@@ -44,10 +44,10 @@ CREATE TABLE Category (
 );
 
 CREATE TABLE Property (
-  property_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
   cpd_id INT UNSIGNED NOT NULL,
   category VARCHAR(255) NOT NULL,
   value MEDIUMTEXT NOT NULL, # Look more into this, desired: get data type/limit from category
+  property_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
   PRIMARY KEY (property_id),
   UNIQUE(cpd_id, category)  # Will need to change to allow multiple of the same property, diff methods
 );
