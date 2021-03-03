@@ -3,17 +3,18 @@ import pandas as pd
 import numpy as np
 
 
-class DatabaseManager():
+class DatabaseManager(host='localhost', user='root', passwd='password',
+                      database='compound_db'):
 
     def __init__(self):
         '''Connect to compound DB and store handles'''
 
         # Connect to DB
         self.conn = mysql.connector.connect(
-            host='localhost',
-            user='root',
-            passwd='password',
-            database='compound_db'
+            host=host,
+            user=user,
+            passwd=passwd,
+            database=database
         )
         self.cursor = self.conn.cursor(buffered=True)
 
