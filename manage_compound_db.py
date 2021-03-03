@@ -43,9 +43,12 @@ class DatabaseManager():
     # ----------------------------------------------------------------------
     # Query database
 
-    def run_query(self, query):
+    def run_query(self, query, expect_return=True):
         # TODO: check query
-        return pd.read_sql(query, con=self.conn)
+        if expect_return:
+            return pd.read_sql(query, con=self.conn)
+        self.cursor.execute(query)
+        return
 
     def prep_string(self, s):
         '''Get string ready for DB query by adding quotes if needed'''
