@@ -23,6 +23,9 @@ class DatabaseManager():
 
         return
 
+    # ----------------------------------------------------------------------
+    # Getters
+
     def get_property_categories(self):
         return self.categories[:]
 
@@ -32,77 +35,12 @@ class DatabaseManager():
     def get_connector(self):
         return self.conn
 
+    # ----------------------------------------------------------------------
+    # Query database
+
     def run_query(self, query):
         # TODO: check query
         return pd.read_sql(query, con=self.conn)
-
-    def create_cpd_ids(self, df, inplace=False, start_id=None):
-        '''Add cpd_id column to df to reference during insertion'''
-
-        # Throw error if there is no inchi_key col
-        if 'inchi_key' not in df.columns:
-            raise ValueError('inchi_key column required but missing.')
-
-        # Throw error if any inchikeys are nan
-        if df['inchi_key'].isnull().sum() > 0:
-            m = 'Nan InChIKeys exist, remove before running function.'
-            raise ValueError(m.format(i))
-
-        # Work from copy if original shouldn't be edited
-        if not inplace:
-            df = df.copy()
-
-        # Get ID to start from
-        if start_id is None:
-            next_id = self.get_max_id('compound') + 1
-
-        # Add cpd_id column
-        df['cpd_id'] = -1
-
-        # Dictionary to track cpd_ids within this lib
-        # Since these cpd_ids haven't been commited, they aren't
-        # trackable through the DB yet.
-        d = {}
-
-        # Iterate through df, updating with appropriate ID
-        for i, row in df.iterrows():
-
-            val = row['inchi_key']
-
-            # If this cpd is already in the DB, use that cpd_id
-            if val in d:
-                df.at[i, 'cpd_id'] = d[val]
-            elif self.val_exists('compound', 'inchi_key', val):
-                cpd_id = self.get_cpd_id(val)
-                df.at[i, 'cpd_id'] = cpd_id
-                d[val] = cpd_id
-                print('Hit: {}'.format(cpd_id))
-            else:  # Otherwise, use the next available id
-                df.at[i, 'cpd_id'] = next_id
-                d[val] = next_id
-                next_id += 1
-
-        return df
-
-    def prep_input(self, filename, rename_dict=None, start_id=None, header=0,
-                   sheet_name=0):
-        '''Prepare df for insertion into DB'''
-
-        # Load file
-        df = pd.read_excel(filename, header=header, sheet_name=sheet_name)
-
-        # Rename columns as needed to match those expected in DB
-        if rename_dict is not None:
-            df.rename(columns=rename_dict, inplace=True)
-
-        # Remove entries with nan InChIKey. Avoids errors with next call
-        df.dropna(subset=['inchi_key'], inplace=True)
-        df.reset_index(inplace=True)
-
-        # Create cpd_id col
-        self.create_cpd_ids(df, inplace=True, start_id=start_id)
-
-        return df
 
     def prep_string(self, s):
         '''Get string ready for DB query by adding quotes if needed'''
@@ -177,33 +115,79 @@ class DatabaseManager():
             return -1
         return max_val
 
-    def drop_ineligible_properties(self, df, exceptions=[], inplace=False):
-        '''
-        Remove columns that can not be loaded into the database. To see
-        properties available for insertion into DB, use
-        get_property_categories()
-        '''
+    # ----------------------------------------------------------------------
+    # Prep data for input into database
 
-        # Get property categories available
-        categories = self.get_property_categories()
+    def create_cpd_ids(self, df, inplace=False, start_id=None):
+        '''Add cpd_id column to df to reference during insertion'''
 
-        # Add in exceptions (cols not incategories but should remain in df)
-        categories.extend(exceptions)
+        # Throw error if there is no inchi_key col
+        if 'inchi_key' not in df.columns:
+            raise ValueError('inchi_key column required but missing.')
 
-        # Get columns to drop
-        drop_cols = list(set(df.columns).difference(set(categories)))
+        # Throw error if any inchikeys are nan
+        if df['inchi_key'].isnull().sum() > 0:
+            m = 'Nan InChIKeys exist, remove before running function.'
+            raise ValueError(m.format(i))
 
-        # Report which columns did not pass
-        m = 'The following columns could not be added to properties table: %s'
-        print(m % (', '.join(drop_cols)))
+        # Work from copy if original shouldn't be edited
+        if not inplace:
+            df = df.copy()
 
-        # Handle inplace
-        if inplace:
-            df.drop(columns=drop_cols, inplace=inplace)
+        # Get ID to start from
+        if start_id is None:
+            next_id = self.get_max_id('compound') + 1
+
+        # Add cpd_id column
+        df['cpd_id'] = -1
+
+        # Dictionary to track cpd_ids within this lib
+        # Since these cpd_ids haven't been commited, they aren't
+        # trackable through the DB yet.
+        d = {}
+
+        # Iterate through df, updating with appropriate ID
+        for i, row in df.iterrows():
+
+            val = row['inchi_key']
+
+            # If this cpd is already in the DB, use that cpd_id
+            if val in d:
+                df.at[i, 'cpd_id'] = d[val]
+            elif self.val_exists('compound', 'inchi_key', val):
+                cpd_id = self.get_cpd_id(val)
+                df.at[i, 'cpd_id'] = cpd_id
+                d[val] = cpd_id
+                print('Hit: {}'.format(cpd_id))
+            else:  # Otherwise, use the next available id
+                df.at[i, 'cpd_id'] = next_id
+                d[val] = next_id
+                next_id += 1
+
+        return df
+
+        def prep_input(self, filename, rename_dict=None, start_id=None, header=0,
+                       sheet_name=0):
+            '''Prepare df for insertion into DB'''
+
+            # Load file
+            df = pd.read_excel(filename, header=header, sheet_name=sheet_name)
+
+            # Rename columns as needed to match those expected in DB
+            if rename_dict is not None:
+                df.rename(columns=rename_dict, inplace=True)
+
+            # Remove entries with nan InChIKey. Avoids errors with next call
+            df.dropna(subset=['inchi_key'], inplace=True)
+            df.reset_index(inplace=True)
+
+            # Create cpd_id col
+            self.create_cpd_ids(df, inplace=True, start_id=start_id)
+
             return df
 
-        # Return df with dropped columns
-        return df.drop(columns=drop_cols)
+    # ----------------------------------------------------------------------
+    # Populate database
 
     def _populate_db(self, df, table, commit=True):
         '''Drops any entries with nan values then loads full table into DB.
@@ -364,6 +348,33 @@ class DatabaseManager():
 
         return num1, num2, num1d, num2d
 
+    def drop_ineligible_properties(self, df, exceptions=[], inplace=False):
+        '''
+        Remove columns that can not be loaded into the database. To see
+        properties available for insertion into DB, use
+        get_property_categories()
+        '''
+
+        # Get property categories available
+        categories = self.get_property_categories()
+
+        # Add in exceptions (cols not incategories but should remain in df)
+        categories.extend(exceptions)
+
+        # Get columns to drop
+        drop_cols = list(set(df.columns).difference(set(categories)))
+
+        # Report which columns did not pass
+        m = 'The following columns could not be added to properties table: %s'
+        print(m % (', '.join(drop_cols)))
+
+        # Handle inplace
+        if inplace:
+            df.drop(columns=drop_cols, inplace=inplace)
+            return df
+
+        # Return df with dropped columns
+        return df.drop(columns=drop_cols)
 
     def populate_property(self, df, exceptions=['cpd_id']):
 
