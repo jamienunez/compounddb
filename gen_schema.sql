@@ -85,7 +85,7 @@ ALTER TABLE Mass
 FOREIGN KEY (cpd_id) REFERENCES Compound (cpd_id)
 	ON DELETE CASCADE;
 
-CREATE TABLE Spectra (
+CREATE TABLE MS2_Spectra (
 	cpd_id INT UNSIGNED NOT NULL,
     mode BOOLEAN,
     voltage TINYINT,
@@ -98,14 +98,14 @@ ALTER TABLE MS2_Spectra
 FOREIGN KEY (cpd_id) REFERENCES Compound (cpd_id)
 	ON DELETE CASCADE;
 
-CREATE TABLE Spectra_Detail (
+CREATE TABLE Fragment (
 	spectra_id INT UNSIGNED NOT NULL,
     mass float(16),
 	relative_intensity float(16),
     UNIQUE(spectra_id, mass)
 );
 
-ALTER TABLE Spectra_Detail
-	ADD CONSTRAINT fk_Spectra_Detail_spectra_id_Spectra_spectra_id
-FOREIGN KEY (spectra_id) REFERENCES Spectra (spectra_id)
+ALTER TABLE Fragment
+	ADD CONSTRAINT fk_Fragment_spectra_id_MS2_Spectra_spectra_id
+FOREIGN KEY (spectra_id) REFERENCES MS2_Spectra (spectra_id)
 	ON DELETE CASCADE;
