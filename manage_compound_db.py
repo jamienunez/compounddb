@@ -197,41 +197,6 @@ class DatabaseManager():
     # ----------------------------------------------------------------------
     # Populate database
 
-    def _populate_db(self, df, table, commit=True):
-        '''Drops any entries with nan values then loads full table into DB.
-        Also tracks the number actually inserted into DB.
-        Returns cursor, the number of entries added, and the number of entries
-        ignored (not including those with NA values)'''
-
-        # Ignore any entries with nan results
-        df = df.dropna()
-
-        # Get number of entries in DB table before adding anything
-        max1 = self.get_num_entries(table)
-
-        # Design query
-        query = 'insert ignore into {0}({1}) values ({2})'
-        s = ['\'%s\'' for x in range(len(df.columns))]
-        query = query.format(table, ','.join(df.columns), ','.join(s))
-
-        # Make calls to db, add each row
-        for row in df.itertuples(index=False):
-            try:
-                self.cursor.execute(query % tuple(row))
-            except mysql.connector.ProgrammingError:
-                print('Failed query: {}'.format(query % tuple(row)))
-
-        # Commit changes
-        if commit:
-            self.conn.commit()
-
-        # Assess entries added vs skipped
-        max2 = self.get_num_entries(table)
-        entries_added = max2 - max1
-        entries_skipped = len(df) - entries_added
-
-        return entries_added, entries_skipped
-
     def _populate_db(self, df, table, commit=True, sep='\t',
                      line_terminator='\n',
                      filename=os.path.join(TMP_SAVE_PATH, 'tmp.txt')):
