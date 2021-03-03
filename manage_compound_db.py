@@ -3,10 +3,10 @@ import pandas as pd
 import numpy as np
 
 
-class DatabaseManager(host='localhost', user='root', passwd='password',
-                      database='compound_db'):
+class DatabaseManager():
 
-    def __init__(self):
+    def __init__(self, host='localhost', user='root', passwd='password',
+                 database='compound_db'):
         '''Connect to compound DB and store handles'''
 
         # Connect to DB
