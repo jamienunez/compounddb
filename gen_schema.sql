@@ -89,7 +89,7 @@ CREATE TABLE MS2_Spectra (
 	cpd_id INT UNSIGNED NOT NULL,
     mode BOOLEAN,
     voltage TINYINT,
-    spectra_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    spectra_id INT UNSIGNED NOT NULL,
 	PRIMARY KEY (spectra_id)
 );
 
