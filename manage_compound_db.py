@@ -10,28 +10,53 @@ TMP_SAVE_PATH = 'C:/ProgramData/MySQL/MySQL Server 8.0/Uploads/'
 class DatabaseManager():
 
     def __init__(self, host='localhost', user='root', passwd='password',
-                 database='compound_db'):
+                 database='compound_db', stay_open=False):
+
+        # Initialize attributes
+        self.host = host
+        self.user = user
+        self.passwd = passwd
+        self.database = database
+        self.stay_open = stay_open
+        self.conn = None
+        self.cursor = None
+        self.categories = None
+
+        # If this manager should keep the connection open, start it now
+        if stay_open:
+            self.open_db()
+
+        return
+
+    def open_db(self, override=False):
         '''Connect to compound DB and store handles'''
+        if self.conn is None or self.cursor is None or override:
+            self.conn = mysql.connector.connect(
+                host=self.host,
+                user=self.user,
+                passwd=self.passwd,
+                database=self.database
+            )
+            self.cursor = self.conn.cursor(buffered=True)
+        return
 
-        # Connect to DB
-        self.conn = mysql.connector.connect(
-            host=host,
-            user=user,
-            passwd=passwd,
-            database=database
-        )
-        self.cursor = self.conn.cursor(buffered=True)
-
-        # Get permitted property categories
-        self.cursor.execute('SELECT name FROM category')
-        self.categories = [x[0] for x in self.cursor.fetchall()]
-
+    def close_db(self, override=False):
+        '''Close DB connection'''
+        if not self.stay_open or override:
+            self.conn.close()
+            self.conn = None
+            self.cursor = None
         return
 
     # ----------------------------------------------------------------------
     # Getters
 
     def get_property_categories(self):
+        # Get permitted property categories
+        if self.categories is None:
+            query = 'SELECT name FROM category'
+            res = self.run_query(query)
+            self.categories = res['name'].values.tolist()
         return self.categories[:]
 
     def get_cursor(self):
@@ -41,14 +66,26 @@ class DatabaseManager():
         return self.conn
 
     # ----------------------------------------------------------------------
+    # Setters
+
+    def set_stay_open(stay_open):
+        if type(stay_open) != bool:
+            raise ValueError('Invalid entry for stay_open. Use boolean')
+        self.stay_open = stay_open
+
+    # ----------------------------------------------------------------------
     # Query database
 
-    def run_query(self, query, expect_return=True):
+    def run_query(self, query, single_val=False):
         # TODO: check query
-        if expect_return:
-            return pd.read_sql(query, con=self.conn)
-        self.cursor.execute(query)
-        return
+        self.open_db()
+        if single_val:
+            self.cursor.execute(query)
+            res = self.cursor.fetchone()[0]
+        else:
+            res = pd.read_sql(query, con=self.conn)
+        self.close_db()
+        return res
 
     def prep_string(self, s):
         '''Get string ready for DB query by adding quotes if needed'''
@@ -76,7 +113,7 @@ class DatabaseManager():
         This function is best for strings and integers.'''
         val = self.prep_string(val)
         query = 'SELECT * FROM %s WHERE %s = %s;' % (table, col, val)
-        return bool(len(pd.read_sql(query, con=self.conn)))
+        return bool(len(self.run_query(query)))
 
     def val_exists_within_error(self, table, col, val, e):
         '''Check if the given value exists in the given table+col. The error
@@ -89,18 +126,20 @@ class DatabaseManager():
             max_val = val * (1 + e)
             query = 'SELECT * FROM {} WHERE {} BETWEEN {} and {};'
             query = query.format(table, col, min_val, max_val)
-        return bool(len(pd.read_sql(query, con=self.conn)))
+        return bool(len(self.run_query(query)))
 
     def get_cpd_id(self, inchi_key):
         '''Get cpd_id of given InChIKey'''
+
         inchi_key = self.prep_string(inchi_key)
         query = 'SELECT cpd_id FROM compound WHERE inchi_key = %s;' % inchi_key
-        return pd.read_sql(query, con=self.conn).values[0][0]
+        res = self.run_query(query).values[0][0]
+        return res
 
     def get_num_entries(self, table):
         '''Get height of table'''
-        self.cursor.execute('SELECT COUNT(*) FROM %s' % table)
-        return self.cursor.fetchone()[0]
+        query = 'SELECT COUNT(*) FROM %s' % table
+        return self.run_query(query, single_val=True)
 
     def get_max_id(self, table):
         '''Get max unique identifier for this table.'''
@@ -115,8 +154,8 @@ class DatabaseManager():
             return None
 
         # Query
-        self.cursor.execute('SELECT MAX(%s) FROM %s' % (col, table))
-        max_val = self.cursor.fetchone()[0]
+        query = 'SELECT MAX(%s) FROM %s' % (col, table)
+        max_val = self.run_query(query, single_val=True)
 
         # Return result
         if max_val is None:
@@ -166,7 +205,6 @@ class DatabaseManager():
                 cpd_id = self.get_cpd_id(val)
                 df.at[i, 'cpd_id'] = cpd_id
                 d[val] = cpd_id
-                print('Hit: {}'.format(cpd_id))
             else:  # Otherwise, use the next available id
                 df.at[i, 'cpd_id'] = next_id
                 d[val] = next_id
@@ -228,12 +266,12 @@ class DatabaseManager():
                          self.prep_string(sep),
                          self.prep_string(line_terminator))
 
+        self.open_db()
         # Upload
         self.cursor.execute(query)
-
-        # Commit changes
         if commit:
             self.conn.commit()
+        self.close_db()
 
         # Assess entries added vs skipped
         max2 = self.get_num_entries(table)
@@ -484,10 +522,3 @@ class DatabaseManager():
         self.populate_property(df)
 
         return
-
-    def close_connection(self):
-        '''Close DB connection'''
-        self.conn.close()
-        self.conn = None
-        self.cursor = None
-        self.categories = None
