@@ -174,25 +174,25 @@ class DatabaseManager():
 
         return df
 
-        def prep_input(self, filename, rename_dict=None, start_id=None, header=0,
-                       sheet_name=0):
-            '''Prepare df for insertion into DB'''
+    def prep_input(self, filename, rename_dict=None, start_id=None, header=0,
+                   sheet_name=0):
+        '''Prepare df for insertion into DB'''
 
-            # Load file
-            df = pd.read_excel(filename, header=header, sheet_name=sheet_name)
+        # Load file
+        df = pd.read_excel(filename, header=header, sheet_name=sheet_name)
 
-            # Rename columns as needed to match those expected in DB
-            if rename_dict is not None:
-                df.rename(columns=rename_dict, inplace=True)
+        # Rename columns as needed to match those expected in DB
+        if rename_dict is not None:
+            df.rename(columns=rename_dict, inplace=True)
 
-            # Remove entries with nan InChIKey. Avoids errors with next call
-            df.dropna(subset=['inchi_key'], inplace=True)
-            df.reset_index(inplace=True)
+        # Remove entries with nan InChIKey. Avoids errors with next call
+        df.dropna(subset=['inchi_key'], inplace=True)
+        df.reset_index(inplace=True)
 
-            # Create cpd_id col
-            self.create_cpd_ids(df, inplace=True, start_id=start_id)
+        # Create cpd_id col
+        self.create_cpd_ids(df, inplace=True, start_id=start_id)
 
-            return df
+        return df
 
     # ----------------------------------------------------------------------
     # Populate database
