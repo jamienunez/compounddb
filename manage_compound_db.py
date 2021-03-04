@@ -303,11 +303,12 @@ class DatabaseManager():
         # Get MS2 cols
         cols = [x for x in df.columns if 'MSMS' in x]
 
-        # Track total number of entries added
-        num1 = 0  # main table (ms2_spectra)
-        num2 = 0  # main table (ms2_spectra)
-        num1d = 0  # detail table (fragment)
-        num2d = 0  # detail table (fragment)
+        # Init tables that will be added to the database
+        spectra_all = pd.DataFrame(columns=['cpd_id', 'mode', 'voltage', 'spectra_id'])
+        fragments_all = pd.DataFrame(columns=['spectra_id', 'mass', 'relative_intensity'])
+
+        # Get spectra_id to start with
+        start_id = self.get_max_id('ms2_spectra') + 1
 
         for col in cols:
 
@@ -328,13 +329,13 @@ class DatabaseManager():
             spectra['voltage'] = int(info[2])
 
             # Add spectra id
-            start_id = self.get_max_id('ms2_spectra') + 1
-            spectra['spectra_id'] = range(start_id, start_id + len(spectra))
+            n = len(spectra)
+            spectra['spectra_id'] = range(start_id, start_id + n)
+            start_id += n
 
-            # Populate master table
-            num1t, num2t = self._populate_db(spectra.drop(columns=[col]), 'ms2_spectra')
-            num1 += num1t
-            num2 += num2t
+            # Add to master df
+            spectra_all = pd.concat([spectra_all, spectra.drop(columns=[col])],
+                                    ignore_index=True)
 
             # Add each spectra to detail table (int and mass info)
             for i, row in spectra.iterrows():
@@ -356,20 +357,26 @@ class DatabaseManager():
                                        'relative_intensity']]
 
                 # Round numbers to decrease storage size
-                fragments = np.around(fragments, 4)
+                fragments = fragments.round({'mass': 4,
+                                             'relative_intensity': 4})
 
-                # Populate fragment table
-                num1t, num2t = self._populate_db(fragments, 'fragment')
-                num1d += num1t
-                num2d += num2t
+                # Add to master df
+                fragments_all = pd.concat([fragments_all, fragments],
+                                          ignore_index=True)
+
+        # Populate ms2_spectra table
+        num1, num2 = self._populate_db(spectra_all, 'ms2_spectra')
 
         # Report spectra additions
         self.print_added_entries('MS2_Spectra', num1, num2)
 
-        # Report fragment additions
-        self.print_added_entries('Fragment', num1d, num2d)
+        # Populate fragment table
+        num1, num2 = self._populate_db(fragments_all, 'fragment')
 
-        return num1, num2, num1d, num2d
+        # Report fragment additions
+        self.print_added_entries('Fragment', num1, num2)
+
+        return
 
     def drop_ineligible_properties(self, df, exceptions=[], inplace=False):
         '''
