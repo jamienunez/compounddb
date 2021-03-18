@@ -85,9 +85,42 @@ ALTER TABLE Mass
 FOREIGN KEY (cpd_id) REFERENCES Compound (cpd_id)
 	ON DELETE CASCADE;
 
+CREATE TABLE CCS_mph (
+  cpd_id INT UNSIGNED NOT NULL,
+  value float(16) NOT NULL,
+  PRIMARY KEY (cpd_id)
+);
+
+ALTER TABLE CCS_mph
+	ADD CONSTRAINT fk_CCS_mph_cpdId_Compound_cpdId
+FOREIGN KEY (cpd_id) REFERENCES Compound (cpd_id)
+	ON DELETE CASCADE;
+
+CREATE TABLE CCS_mpna (
+  cpd_id INT UNSIGNED NOT NULL,
+  value float(16) NOT NULL,
+  PRIMARY KEY (cpd_id)
+);
+
+ALTER TABLE CCS_mpna
+	ADD CONSTRAINT fk_CCS_mpna_cpdId_Compound_cpdId
+FOREIGN KEY (cpd_id) REFERENCES Compound (cpd_id)
+	ON DELETE CASCADE;
+
+CREATE TABLE CCS_mmh (
+  cpd_id INT UNSIGNED NOT NULL,
+  value float(16) NOT NULL,
+  PRIMARY KEY (cpd_id)
+);
+
+ALTER TABLE CCS_mmh
+	ADD CONSTRAINT fk_CCS_mmh_cpdId_Compound_cpdId
+FOREIGN KEY (cpd_id) REFERENCES Compound (cpd_id)
+	ON DELETE CASCADE;
+
 CREATE TABLE MS2_Spectra (
 	cpd_id INT UNSIGNED NOT NULL,
-    mode BOOLEAN,
+    adduct VARCHAR(6),
     voltage TINYINT,
     spectra_id INT UNSIGNED NOT NULL,
 	PRIMARY KEY (spectra_id)
@@ -98,14 +131,38 @@ ALTER TABLE MS2_Spectra
 FOREIGN KEY (cpd_id) REFERENCES Compound (cpd_id)
 	ON DELETE CASCADE;
 
-CREATE TABLE Fragment (
+CREATE TABLE Fragment_mph (
 	spectra_id INT UNSIGNED NOT NULL,
     mass float(16),
 	relative_intensity float(16),
     UNIQUE(spectra_id, mass)
 );
 
-ALTER TABLE Fragment
-	ADD CONSTRAINT fk_Fragment_spectra_id_MS2_Spectra_spectra_id
+ALTER TABLE Fragment_mph
+	ADD CONSTRAINT fk_Fragment_mph_spectra_id_MS2_Spectra_spectra_id
+FOREIGN KEY (spectra_id) REFERENCES MS2_Spectra (spectra_id)
+	ON DELETE CASCADE;
+
+CREATE TABLE Fragment_mpna (
+	spectra_id INT UNSIGNED NOT NULL,
+    mass float(16),
+	relative_intensity float(16),
+    UNIQUE(spectra_id, mass)
+);
+
+ALTER TABLE Fragment_mpna
+	ADD CONSTRAINT fk_Fragment_mpna_spectra_id_MS2_Spectra_spectra_id
+FOREIGN KEY (spectra_id) REFERENCES MS2_Spectra (spectra_id)
+	ON DELETE CASCADE;
+
+CREATE TABLE Fragment_mmh (
+	spectra_id INT UNSIGNED NOT NULL,
+    mass float(16),
+	relative_intensity float(16),
+    UNIQUE(spectra_id, mass)
+);
+
+ALTER TABLE Fragment_mmh
+	ADD CONSTRAINT fk_Fragment_mmh_spectra_id_MS2_Spectra_spectra_id
 FOREIGN KEY (spectra_id) REFERENCES MS2_Spectra (spectra_id)
 	ON DELETE CASCADE;
