@@ -253,6 +253,32 @@ class DatabaseManager():
             return -1
         return max_val
 
+    def fetch_ms2_spectra_by_id(self, spectra_id, adduct=None):
+
+        if adduct is None:
+            # Look it up in the ms2_spectra table
+            query = 'SELECT adduct FROM ms2_spectra WHERE spectra_id = {}'
+            query = query.format(spectra_id)
+            res = self.run_query(query)
+
+            # Exit if spectra_id not found
+            if len(res) == 0:
+                return None
+            adduct = res['adduct'].values[0]
+        else:
+            adduct = self._translate_adduct(adduct, throw_error=True)
+
+        # Fetch fragments for this spectra
+        query = 'SELECT mass, relative_intensity FROM fragment_{adduct} WHERE spectra_id = {spectra_id}'
+        query = query.format(**locals())
+        res = self.run_query(query)
+
+        # Exit if spectra_id not found
+        if len(res) == 0:
+            return None
+
+        return res
+
     def fetch_ms2_spectra(self, cpd_id=None, adduct=None, voltage=None):
         '''
         Return all spectra fitting passed in contraints.
@@ -303,12 +329,9 @@ class DatabaseManager():
         spectra = []
         for i, row in res.iterrows():
 
-            # Fetch fragments for this spectra
-            adduct = row['adduct']
-            spectra_id = row['spectra_id']
-            query = 'SELECT mass, relative_intensity FROM fragment_{adduct} WHERE spectra_id = {spectra_id}'
-            query = query.format(**locals())
-            res = self.run_query(query)
+            # Fetch fragments
+            res = self.fetch_ms2_spectra_by_id(row['spectra_id'],
+                                               adduct=row['adduct'])
 
             # Format return
             info = [str(x) for x in row.values]
@@ -319,6 +342,15 @@ class DatabaseManager():
             spectra.append(res)
 
         return spectra
+
+    def fetch_fragments(self, frag_mz, adduct, abs_error=0, rel_error=0,
+                        num_dec=2):
+        # MS2 is often much higher error and searching by 2 dec places much faster than 4
+        adduct = self._translate_adduct(adduct, throw_error=True)
+        table = 'fragment_{}'.format(adduct)
+        return self.fetch_matches_within_error(table, 'mass', frag_mz,
+                                               rel_error=rel_error,
+                                               abs_error=abs_error, num_dec=num_dec)
 
     # ----------------------------------------------------------------------
     # Prep data for input into database
