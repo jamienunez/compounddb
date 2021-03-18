@@ -95,40 +95,113 @@ class DatabaseManager():
             return '\'' + s + '\''
         return s
 
-    def val_exists(self, table, col, val, e=None):
+    def match_exists(self, table, col, val, rel_error=0, abs_error=0):
         '''Check if the given value exists in the given table+col'''
+        return bool(len(self.fetch_matches(table, col, val, rel_error=rel_error,
+                                           abs_error=abs_error)))
 
-        # NaN values are not checked.
-        if val is None:
-            return False
+    def fetch_matches(self, table, col, val, rel_error=0, abs_error=0,
+                      append_str='', num_dec=None):
+        '''Return matches in the given table+col'''
+
+        # NaNs raise errors
+        if None in [table, col, val]:
+            m = 'NaN passed in match query: {}'
+            raise ValueError(m.format([table, col, val]))
 
         # Switch for string value
         if type(val) == str:
-            return self.val_exists_string(table, col, val)
+            return self.fetch_matches_string(table, col, val,
+                                             append_str=append_str)
 
         # Assume float or integer otherwise
-        return self.val_exists_within_error(table, col, val, e)
+        return self.fetch_matches_within_error(table, col, val,
+                                               rel_error=rel_error,
+                                               abs_error=abs_error,
+                                               append_str=append_str,
+                                               num_dec=num_dec)
 
-    def val_exists_string(self, table, col, val):
-        '''Check if the given value exists in the given table+col
-        Note: this value is treated exactly, with no error considered.
-        This function is best for strings and integers.'''
+    def fetch_matches_string(self, table, col, val, append_str=''):
+        '''Return matches for a string value in the given table+col'''
         val = self.prep_string(val)
-        query = 'SELECT * FROM %s WHERE %s = %s;' % (table, col, val)
-        return bool(len(self.run_query(query)))
+        query = 'SELECT * FROM {} WHERE {} = {}{};'
+        query = query.format(table, col, val, append_str)
+        return self.run_query(query)
 
-    def val_exists_within_error(self, table, col, val, e):
-        '''Check if the given value exists in the given table+col. The error
+    # Rel and abs error, change to return actual val
+    def fetch_matches_within_error(self, table, col, val, rel_error=0,
+                                   abs_error=0, append_str='', num_dec=None):
+        '''Return matches for a numeric value in the given table+col. The error
         provided should already be divded by desired level of accuracy
-        (e.g. 5 / 100 for 5% error). Use e=0 for integers.'''
-        if e is None or e == 0:
-            query = 'SELECT * FROM %s WHERE %s = %s;' % (table, col, val)
+        (e.g. 5 / 100 for 5% error).'''
+        if rel_error == 0 and abs_error == 0:
+            query = 'SELECT * FROM {} WHERE {} = {}{};'
+            query = query.format(table, col, val, append_str)
         else:
-            min_val = val * (1 - e)
-            max_val = val * (1 + e)
-            query = 'SELECT * FROM {} WHERE {} BETWEEN {} and {};'
-            query = query.format(table, col, min_val, max_val)
-        return bool(len(self.run_query(query)))
+            min_val, max_val = self.get_range(val, rel_error=rel_error,
+                                              abs_error=abs_error)
+            if num_dec is not None:
+                min_val = round(min_val, num_dec)
+                max_val = round(max_val, num_dec)
+            query = 'SELECT * FROM {} WHERE {} BETWEEN {} and {}{};'
+            query = query.format(table, col, min_val, max_val, append_str)
+        return self.run_query(query)
+
+    def get_range(self, val, abs_error=0, rel_error=0):
+        '''Calculate range of values covered by provided value and
+        associated error. If both abs_error and rel_error are passed,
+        returns results based on the larger error range. Assumes val is
+        positive.'''
+
+        # Check input
+        if abs_error < 0:
+            m = 'Negative error passed for absolute error: {}'
+            raise ValueError(m.format(abs_error))
+        if rel_error < 0:
+            m = 'Negative error passed for relative error: {}'
+            raise ValueError(m.format(rel_error))
+
+        # Return range based on the larger error window
+        if abs_error > val * rel_error:
+            return val - abs_error, val + abs_error
+        return val * (1 - rel_error), val * (1 + rel_error)
+
+    def fetch_mass_ccs_matches(self, mass, ccs, adduct, mass_rel_error=0,
+                               mass_abs_error=0, ccs_rel_error=0,
+                               ccs_abs_error=0):
+
+        adduct = self._translate_adduct(adduct, throw_error=True)
+        db_table = 'ccs_{}'.format(adduct)
+
+        # Calculate mass and CCSs ranges to search for
+        min_mass, max_mass = self.get_range(mass, rel_error=mass_rel_error,
+                                            abs_error=mass_abs_error)
+        min_ccs, max_ccs = self.get_range(ccs, rel_error=ccs_rel_error,
+                                          abs_error=ccs_abs_error)
+
+        # Design query
+        query = '''
+                SELECT mass.cpd_id, mass.value mass, c.value ccs
+                FROM mass
+                LEFT JOIN {} c
+                ON mass.cpd_id=c.cpd_id
+                WHERE mass.value BETWEEN {:.4f} and {:.4f}
+                AND c.value BETWEEN {:.2f} and {:.2f}
+                '''
+        query = query.format(db_table, min_mass, max_mass, min_ccs, max_ccs)
+
+        # Query and return resulting table
+        return self.run_query(query)
+
+    def fetch_property_match(self, category, val, rel_error=0, abs_error=0,
+                             num_dec=None):
+        if category not in self.get_property_categories():
+            m = 'Invalid category for property table: {}. Use get_property_categories() for available categories.'
+            raise ValueError(m.format(category))
+        append_str = ' AND category = {}'.format(self.prep_string(category))
+        return self.fetch_matches('property', 'value', val,
+                                  rel_error=rel_error, abs_error=abs_error,
+                                  append_str=append_str, num_dec=num_dec)
 
     def get_cpd_id(self, inchi_key):
         '''Get cpd_id of given InChIKey'''
@@ -203,7 +276,7 @@ class DatabaseManager():
             # If this cpd is already in the DB, use that cpd_id
             if val in d:
                 df.at[i, 'cpd_id'] = d[val]
-            elif self.val_exists('compound', 'inchi_key', val):
+            elif self.match_exists('compound', 'inchi_key', val):
                 cpd_id = self.get_cpd_id(val)
                 df.at[i, 'cpd_id'] = cpd_id
                 d[val] = cpd_id
