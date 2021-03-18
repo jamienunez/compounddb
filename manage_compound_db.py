@@ -76,11 +76,13 @@ class DatabaseManager():
     # ----------------------------------------------------------------------
     # Query database
 
-    def run_query(self, query, single_val=False):
+    def run_query(self, query, single_val=False, no_return=False):
         # TODO: check query
         self.open_db()
-        if single_val:
+        if single_val or no_return:
             self.cursor.execute(query)
+            if no_return:
+                return
             res = self.cursor.fetchone()[0]
         else:
             res = pd.read_sql(query, con=self.conn)
