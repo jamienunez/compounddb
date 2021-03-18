@@ -21,6 +21,9 @@ class DatabaseManager():
         self.conn = None
         self.cursor = None
         self.categories = None
+        self.adduct_tables = {'[m+h]': 'mph',
+                              '[m+na]': 'mpna',
+                              '[m-h]': 'mmh'}
 
         # If this manager should keep the connection open, start it now
         if stay_open:
@@ -65,10 +68,13 @@ class DatabaseManager():
     def get_connector(self):
         return self.conn
 
+    def get_adducts(self):
+        return self.adduct_tables.keys()
+
     # ----------------------------------------------------------------------
     # Setters
 
-    def set_stay_open(stay_open):
+    def set_stay_open(self, stay_open):
         if type(stay_open) != bool:
             raise ValueError('Invalid entry for stay_open. Use boolean')
         self.stay_open = stay_open
@@ -303,7 +309,9 @@ class DatabaseManager():
         df.reset_index(inplace=True)
 
         # Create cpd_id col
+        self.set_stay_open(True)
         self.create_cpd_ids(df, inplace=True, start_id=start_id)
+        self.set_stay_open(False)
 
         return df
 
@@ -341,8 +349,8 @@ class DatabaseManager():
                          self.prep_string(sep),
                          self.prep_string(line_terminator))
 
-        self.open_db()
         # Upload
+        self.open_db()
         self.cursor.execute(query)
         if commit:
             self.conn.commit()
@@ -359,6 +367,22 @@ class DatabaseManager():
         m = '{}: {} entries added successfully. {} not added.\n'
         print(m.format(table, num1, num2))
         return
+
+    def _translate_adduct(self, adduct, throw_error=False):
+
+        # Translate adduct name into table identifier
+        adduct = adduct.lower()
+        for k, v in self.adduct_tables.items():
+            if k.lower() in adduct or v.lower() == adduct:
+                return v
+
+        # Throw error if requested
+        if throw_error:
+            m = 'No adduct name found: {}. Use get_adducts() for available options.'
+            raise ValueError(m.format(adduct))
+
+        # Otherwise, just return None
+        return None
 
     def populate_library(self, lib_info):
 
@@ -409,85 +433,121 @@ class DatabaseManager():
         return
 
     def populate_ms2_spectra(self, df, frag_split=';', info_split=','):
+    def _populate_ms2_spectra(self, spectra, fragments, adduct):
+        num1s, num2s = self._populate_db(spectra, 'ms2_spectra')
+        num1f, num2f = self._populate_db(fragments, 'fragment_{}'.format(adduct))
+        return num1s, num2s, num1f, num2f
+
+    def _process_spectra(self, spectra, info, start_id):
+
+        # Drop any nans
+        spectra = spectra.dropna()
+
+        # Add voltage
+        spectra['voltage'] = int(info[2])
+
+        # Add spectra id
+        n = len(spectra)
+        spectra['spectra_id'] = list(range(start_id, start_id + n))
+        start_id += n
+
+        return spectra, start_id
+
+    def _process_fragments(self, s, id, frag_split=';', info_split=','):
+
+        # Text to matrix (col 0: mass, col 1: intensity)
+        fragments = np.array([y.split(info_split)
+                              for y in s.split(frag_split)],
+                             np.float64)
+
+        # Make all intensities 0-1
+        fragments[:, 1] /= np.sum(fragments[:, 1])
+
+        # Matrix to dataframe
+        fragments = pd.DataFrame(fragments,
+                                 columns=['mass', 'relative_intensity'],
+                                 dtype=np.float64)
+        fragments['spectra_id'] = id
+        fragments = fragments[['spectra_id', 'mass',
+                               'relative_intensity']]
+
+        # Round numbers to decrease storage size
+        fragments = fragments.round({'mass': 4,
+                                     'relative_intensity': 4})
+
+        return fragments
+
+    def populate_ms2_spectra(self, df, frag_split=';', info_split=',',
+                             max_len=100000):
         '''MS2 cols must all be labeled MSMS {Mode} {Voltage}
-        (e.g. 'MSMS Positive 10'). Spectra muss be in the following
+        (e.g. 'MSMS Positive 10'). Spectra must be in the following
         format: {mass}{info_split}{intensity}{frag_slit}{mass}{info_split}...'''
 
         # Get MS2 cols
         cols = [x for x in df.columns if 'MSMS' in x]
 
         # Init tables that will be added to the database
-        spectra_all = pd.DataFrame(columns=['cpd_id', 'mode', 'voltage', 'spectra_id'])
+        spectra_all = pd.DataFrame(columns=['cpd_id', 'adduct', 'voltage', 'spectra_id'])
         fragments_all = pd.DataFrame(columns=['spectra_id', 'mass', 'relative_intensity'])
 
         # Get spectra_id to start with
         start_id = self.get_max_id('ms2_spectra') + 1
 
+        # Initialize upload counts
+        nums = [0,  # Number of entries added to spectra table
+                0,  # Number of entries prepared but not added to spectra table
+                0,  # Number of entries added to fragment table
+                0]  # Number of entries prepared but not added to fragment table
+
+        # Cycle through all columns with MS2 data
         for col in cols:
 
-            # Add spectra to head table
-            info = col.split(' ')
-            spectra = df[['cpd_id', col]]
+            # Assign adduct
+            adduct = self._translate_adduct(col)
+            if adduct is None:
+                m = 'Could not add potential MSMS column: {}. Check adduct name.'
+                print(m.format(col))
 
-            # Drop any nans
-            spectra = spectra.dropna()
+            if adduct is not None:
+                spectra['adduct'] = adduct
 
-            # Assign voltage (boolean)
-            if 'pos' in info[1].lower():
-                spectra['mode'] = 1
-            else:
-                spectra['mode'] = 0
-
-            # Add voltage
-            spectra['voltage'] = int(info[2])
-
-            # Add spectra id
-            n = len(spectra)
-            spectra['spectra_id'] = range(start_id, start_id + n)
-            start_id += n
-
-            # Add to master df
-            spectra_all = pd.concat([spectra_all, spectra.drop(columns=[col])],
-                                    ignore_index=True)
-
-            # Add each spectra to detail table (int and mass info)
-            for i, row in spectra.iterrows():
-
-                # Text to matrix (col 0: mass, col 1: intensity)
-                fragments = np.array([y.split(info_split)
-                                      for y in row[col].split(frag_split)],
-                                     np.float64)
-
-                # Make all intensities 0-1
-                fragments[:, 1] /= np.sum(fragments[:, 1])
-
-                # Matrix to dataframe
-                fragments = pd.DataFrame(fragments,
-                                         columns=['mass', 'relative_intensity'],
-                                         dtype=np.float64)
-                fragments['spectra_id'] = row['spectra_id']
-                fragments = fragments[['spectra_id', 'mass',
-                                       'relative_intensity']]
-
-                # Round numbers to decrease storage size
-                fragments = fragments.round({'mass': 4,
-                                             'relative_intensity': 4})
+                # Get head spectra info for this column
+                spectra, start_id = self._process_spectra(df[['cpd_id', col]],
+                                                          col.split(' '), start_id)
 
                 # Add to master df
-                fragments_all = pd.concat([fragments_all, fragments],
-                                          ignore_index=True)
+                spectra_all = pd.concat([spectra_all, spectra.drop(columns=[col])],
+                                        ignore_index=True)
 
-        # Populate ms2_spectra table
-        num1, num2 = self._populate_db(spectra_all, 'ms2_spectra')
+                # Add each spectra to detail table (int and mass info)
+                for i, row in spectra.iterrows():
 
-        # Report spectra additions
-        self.print_added_entries('MS2_Spectra', num1, num2)
+                    # Get fragments in this cell
+                    fragments = self._process_fragments(row[col], row['spectra_id'],
+                                                        frag_split=frag_split,
+                                                        info_split=info_split)
 
-        # Populate fragment table
-        num1, num2 = self._populate_db(fragments_all, 'fragment')
+                    # Add to master df
+                    fragments_all = pd.concat([fragments_all, fragments],
+                                              ignore_index=True)
 
-        # Report fragment additions
-        self.print_added_entries('Fragment', num1, num2)
+                    # If over max_len, upload now, reset, then continue
+                    # Avoids too large of a df hogging memory
+                    if len(fragments_all) >= max_len:
+                        numst = self._populate_ms2_spectra(spectra_all, fragments_all, adduct)
+                        nums = [nums[i] + numst[i] for i in range(len(nums))]
+
+                        # Reset
+                        spectra_all, fragments_all = spectra_all[0: 0], fragments_all[0: 0]
+                        print('Here')
+
+                # Populate tables
+                numst = self._populate_ms2_spectra(spectra_all, fragments_all, adduct)
+                nums = [nums[i] + numst[i] for i in range(len(nums))]
+
+                # Report spectra additions
+                self.print_added_entries('MS2_Spectra', nums[0], nums[1])
+                self.print_added_entries('Fragment_{}'.format(adduct), nums[2], nums[3])
 
         return
 
@@ -569,7 +629,7 @@ class DatabaseManager():
 
         return lib_info
 
-    def populate_db(self, df, lib_info):
+    def populate_db(self, df, lib_info, max_len=100000):
         '''
         Generic function to load full library into the database. Assumes
         provided df has the following columns: 'cpd_id', 'inchi_key', 'lib_id'
@@ -591,7 +651,7 @@ class DatabaseManager():
         self.populate_mass(df)
 
         # Populate MS2s
-        self.populate_ms2_spectra(df)
+        self.populate_ms2_spectra(df, max_len=max_len)
 
         # Populate all other properties
         self.populate_property(df)
