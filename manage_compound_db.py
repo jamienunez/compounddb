@@ -432,7 +432,32 @@ class DatabaseManager():
         self.print_added_entries('Mass', num1, num2)
         return
 
-    def populate_ms2_spectra(self, df, frag_split=';', info_split=','):
+    def populate_ccs(self, df):
+
+        # Process columns containing CCS values
+        for col in [x for x in df.columns if 'CCS' in x]:
+
+            # Find appropriate table
+            adduct = self._translate_adduct(col)
+            if adduct is None:
+                m = 'Could not add potential CCS column: {}. Check adduct name.'
+                print(m.format(col))
+
+            if adduct is not None:
+
+                db_table = 'ccs_{}'.format(adduct)
+
+                # Form table
+                df_temp = df[['cpd_id', col]]
+                df_temp.rename(columns={col: 'value'}, inplace=True)
+
+                # Populate
+                num1, num2 = self._populate_db(df_temp, db_table)
+
+                # Report
+                self.print_added_entries(db_table, num1, num2)
+        return
+
     def _populate_ms2_spectra(self, spectra, fragments, adduct):
         num1s, num2s = self._populate_db(spectra, 'ms2_spectra')
         num1f, num2f = self._populate_db(fragments, 'fragment_{}'.format(adduct))
@@ -649,6 +674,9 @@ class DatabaseManager():
 
         # Populate masses
         self.populate_mass(df)
+
+        # Populate CCS
+        self.populate_ccs(df)
 
         # Populate MS2s
         self.populate_ms2_spectra(df, max_len=max_len)
