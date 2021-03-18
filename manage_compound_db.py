@@ -521,10 +521,6 @@ class DatabaseManager():
         # Get MS2 cols
         cols = [x for x in df.columns if 'MSMS' in x]
 
-        # Init tables that will be added to the database
-        spectra_all = pd.DataFrame(columns=['cpd_id', 'adduct', 'voltage', 'spectra_id'])
-        fragments_all = pd.DataFrame(columns=['spectra_id', 'mass', 'relative_intensity'])
-
         # Get spectra_id to start with
         start_id = self.get_max_id('ms2_spectra') + 1
 
@@ -537,6 +533,10 @@ class DatabaseManager():
         # Cycle through all columns with MS2 data
         for col in cols:
 
+            # Init tables that will be added to the database
+            spectra_all = pd.DataFrame(columns=['cpd_id', 'adduct', 'voltage', 'spectra_id'])
+            fragments_all = pd.DataFrame(columns=['spectra_id', 'mass', 'relative_intensity'])
+
             # Assign adduct
             adduct = self._translate_adduct(col)
             if adduct is None:
@@ -544,11 +544,11 @@ class DatabaseManager():
                 print(m.format(col))
 
             if adduct is not None:
-                spectra['adduct'] = adduct
 
                 # Get head spectra info for this column
                 spectra, start_id = self._process_spectra(df[['cpd_id', col]],
                                                           col.split(' '), start_id)
+                spectra['adduct'] = adduct
 
                 # Add to master df
                 spectra_all = pd.concat([spectra_all, spectra.drop(columns=[col])],
