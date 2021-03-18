@@ -6,6 +6,8 @@ old/
 *.ini
 *.Data
 *.enl
+*_test.sql
+test.*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
