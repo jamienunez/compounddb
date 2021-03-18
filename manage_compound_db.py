@@ -24,6 +24,9 @@ class DatabaseManager():
         self.adduct_tables = {'[m+h]': 'mph',
                               '[m+na]': 'mpna',
                               '[m-h]': 'mmh'}
+        self.adduct_names = {'mph': '[M+H]',
+                             'mpna': '[M+Na]',
+                             'mmh': '[M-H]'}
 
         # If this manager should keep the connection open, start it now
         if stay_open:
@@ -70,6 +73,12 @@ class DatabaseManager():
 
     def get_adducts(self):
         return self.adduct_tables.keys()
+
+    def get_adduct_name(self, adduct):
+        adduct = adduct.lower()
+        if adduct in self.adduct_names:
+            return self.adduct_names[adduct]
+        return None
 
     # ----------------------------------------------------------------------
     # Setters
