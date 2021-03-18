@@ -253,6 +253,73 @@ class DatabaseManager():
             return -1
         return max_val
 
+    def fetch_ms2_spectra(self, cpd_id=None, adduct=None, voltage=None):
+        '''
+        Return all spectra fitting passed in contraints.
+
+        Parameters
+        ----------
+        cpd_id : int (optional)
+            Databases's ID for a compound of interest. Default: None.
+        adduct : string (optional)
+            Adduct leading to MS2. See get_adducts() for available options.
+            Default: None.
+        voltage : int (optional)
+            Voltage MS2 was collected at. Default: None.
+
+        Returns
+        -------
+        list of Pandas DataFrames
+            All matched spectra. Each DataFrame has the following format:
+            Columns: mass, relative_intensity
+            Name: {cpd_id}, {adduct}, {voltage}, {spectra_id}
+        '''
+
+        # Get spectra_ids that match this request
+        query_var = []
+        if cpd_id is not None:
+            query_var.append('cpd_id')
+        if adduct is not None:
+            adduct = self.prep_string(self._translate_adduct(adduct))
+            query_var.append('adduct')
+        if voltage is not None:
+            query_var.append('voltage')
+
+        # Form query
+        query = 'SELECT * FROM ms2_spectra'
+        if len(query_var) > 0:
+            constraints = ['{} = {}{}{}'.format(x, '{', x, '}') for x in query_var]
+            constraints = ' AND '.join(constraints)
+            query = '{} WHERE {}'.format(query, constraints)
+            query = query.format(**locals())
+        else:
+            m = 'Fetching all spectra is not recommended. Add constraints to your query.'
+            raise ValueError(m)
+
+        # Fetch spectra information
+        res = self.run_query(query)
+
+        # Get individual spectra
+        spectra = []
+        for i, row in res.iterrows():
+
+            # Fetch fragments for this spectra
+            adduct = row['adduct']
+            spectra_id = row['spectra_id']
+            query = 'SELECT mass, relative_intensity FROM fragment_{adduct} WHERE spectra_id = {spectra_id}'
+            query = query.format(**locals())
+            res = self.run_query(query)
+
+            # Format return
+            info = [str(x) for x in row.values]
+            info[1] = self.get_adduct_name(info[1])  # Convert to recognizable adduct name
+            res.name = ', '.join(info)
+
+            # Add to list being returned
+            spectra.append(res)
+
+        return spectra
+
     # ----------------------------------------------------------------------
     # Prep data for input into database
 
