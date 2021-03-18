@@ -222,13 +222,14 @@ class DatabaseManager():
         '''Get cpd_id of given InChIKey'''
 
         inchi_key = self.prep_string(inchi_key)
-        query = 'SELECT cpd_id FROM compound WHERE inchi_key = %s;' % inchi_key
+        query = 'SELECT cpd_id FROM compound WHERE inchi_key = {};'
+        query = query.format(inchi_key)
         res = self.run_query(query).values[0][0]
         return res
 
     def get_num_entries(self, table):
         '''Get height of table'''
-        query = 'SELECT COUNT(*) FROM %s' % table
+        query = 'SELECT COUNT(*) FROM {}'.format(table)
         return self.run_query(query, single_val=True)
 
     def get_max_id(self, table):
@@ -244,7 +245,7 @@ class DatabaseManager():
             return None
 
         # Query
-        query = 'SELECT MAX(%s) FROM %s' % (col, table)
+        query = 'SELECT MAX({}) FROM {}'.format(col, table)
         max_val = self.run_query(query, single_val=True)
 
         # Return result
@@ -347,16 +348,16 @@ class DatabaseManager():
 
         # Design query for bulk upload to database
         query = '''
-                LOAD DATA INFILE %s
+                LOAD DATA INFILE {}
                    IGNORE
-                   INTO TABLE %s
-                   FIELDS TERMINATED BY %s
-                   LINES TERMINATED BY %s;
+                   INTO TABLE {}
+                   FIELDS TERMINATED BY {}
+                   LINES TERMINATED BY {};
                 '''
-        query = query % (self.prep_string(filename),
-                         table,
-                         self.prep_string(sep),
-                         self.prep_string(line_terminator))
+        query = query.format(self.prep_string(filename),
+                             table,
+                             self.prep_string(sep),
+                             self.prep_string(line_terminator))
 
         # Upload
         self.open_db()
@@ -602,8 +603,8 @@ class DatabaseManager():
         drop_cols = list(set(df.columns).difference(set(categories)))
 
         # Report which columns did not pass
-        m = 'The following columns could not be added to properties table: %s'
-        print(m % (', '.join(drop_cols)))
+        m = 'The following columns could not be added to properties table: {}'
+        print(m.format(', '.join(drop_cols)))
 
         # Handle inplace
         if inplace:
